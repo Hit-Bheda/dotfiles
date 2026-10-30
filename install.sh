@@ -57,6 +57,13 @@ if command -v gsettings >/dev/null 2>&1; then
 	gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark' 2>/dev/null || true
 fi
 
+# Render the default theme into every generated colour file
+# (hypr, rofi, waybar, GTK, KDE/Qt). Needs the sessions's tools; failures here
+# are never fatal.
+if [[ -x "$REPO/bin/.local/bin/theme-apply" ]]; then
+	"$REPO/bin/.local/bin/theme-apply" "${THEME:-midnight}" || true
+fi
+
 echo
 echo "Done. Packages stowed into $TARGET: ${PACKAGES[*]}"
 [[ -d "$BACKUP" ]] && echo "Old files were backed up to: $BACKUP"

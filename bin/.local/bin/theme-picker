@@ -1,49 +1,40 @@
 #!/usr/bin/env bash
-# Theme picker (rofi): list installed GTK themes, apply to GTK3/GTK4 + libadwaita,
-# and advertise dark/light to Qt and Flatpak apps through the XDG portal.
+# Theme picker (rofi).
 #
-#   theme-picker            pick with rofi
-#   theme-picker <name>     apply directly (e.g. theme-picker Adwaita-dark)
+# Lists the complete desktop themes in ~/dotfiles/themes (Hyprland borders,
+# rofi, waybar, GTK, KDE/Qt palette) *and* the plain GTK themes installed on
+# the system, then applies the selection.
+#
+#   theme-picker                pick with rofi
+#   theme-picker <name>         apply a theme directly
+#   theme-picker --list         list themes
+#
+# Complete themes are applied with `theme-apply`; anything else is treated as
+# a GTK theme and applied to GTK3/GTK4 + gsettings.
 
 set -euo pipefail
 
+SELF="$(readlink -f -- "${BASH_SOURCE[0]}")"
+REPO="${DOTFILES_REPO:-$(cd -- "$(dirname -- "$SELF")/../../.." && pwd)}"
+THEMES="$REPO/themes"
+
 notify() { command -v notify-send >/dev/null && notify-send "Theme" "$1" || true; }
 
-apply_theme() {
-	local theme=$1 scheme=default
-	[[ ${theme,,} == *dark* ]] && scheme=prefer-dark
-
-	# GTK3 / GTK4 settings
-	local ver dir
-	for ver in 3.0 4.0; do
-		dir="$HOME/.config/gtk-$ver"
-		mkdir -p "$dir"
-		cat >"$dir/settings.ini" <<-EOF
-			[Settings]
-			gtk-theme-name=$theme
-			gtk-icon-theme-name=breeze-dark
-			gtk-application-prefer-dark-theme=$([[ $scheme == prefer-dark ]] && echo 1 || echo 0)
-		EOF
+custom_themes() {
+	local d
+	for d in "$THEMES"/*/; do
+		if [[ -f "$d/theme.conf" ]]; then basename -- "$d"; fi
 	done
-
-	# GNOME/libadwaita + portal (Qt, Flatpak, libadwaita follow this)
-	if command -v gsettings >/dev/null 2>&1; then
-		gsettings set org.gnome.desktop.interface gtk-theme "$theme" 2>/dev/null || true
-		gsettings set org.gnome.desktop.interface color-scheme "$scheme" 2>/dev/null || true
-		gsettings set org.gnome.desktop.interface icon-theme "breeze-dark" 2>/dev/null || true
-	fi
-
-	notify "$theme applied ($scheme) — restart open apps to see it"
-	echo "$theme"
+	return 0
 }
 
-themes() {
+gtk_themes() {
 	local d t
 	{
 		for d in /usr/share/themes "$HOME/.local/share/themes"; do
 			[[ -d $d ]] || continue
 			for t in "$d"/*/; do
-				[[ -d $t/gtk-3.0 || -d $t/gtk-4.0 ]] && basename "$t"
+				if [[ -d $t/gtk-3.0 || -d $t/gtk-4.0 ]]; then basename -- "$t"; fi
 			done
 		done
 		# Built into GTK, not present in /usr/share/themes
@@ -52,24 +43,89 @@ themes() {
 	} | sort -u
 }
 
-if [[ $# -gt 0 ]]; then
-	apply_theme "$1"
+is_custom() {
+	[[ -f "$THEMES/$1/theme.conf" ]]
+}
+
+apply_gtk() {
+	local theme=$1 scheme=default
+	if [[ ${theme,,} == *dark* ]]; then scheme=prefer-dark; fi
+
+	local ver dir
+	for ver in 3.0 4.0; do
+		dir="$HOME/.config/gtk-$ver"
+		mkdir -p -- "$dir"
+		cat >"$dir/settings.ini" <<-EOF
+			[Settings]
+			gtk-theme-name=$theme
+			gtk-icon-theme-name=breeze-dark
+			gtk-application-prefer-dark-theme=$([[ $scheme == prefer-dark ]] && echo 1 || echo 0)
+		EOF
+		# Drop the theme-apply palette override so the GTK theme's own
+		# colours are used. `theme-apply <name>` puts it back.
+		cat >"$dir/gtk.css" <<-'EOF'
+			/* GTK-only theme selected: no palette override.
+			 * Run `theme-apply <name>` to get the desktop palette again. */
+		EOF
+	done
+
+	if command -v gsettings >/dev/null 2>&1; then
+		gsettings set org.gnome.desktop.interface gtk-theme "$theme" 2>/dev/null || true
+		gsettings set org.gnome.desktop.interface color-scheme "$scheme" 2>/dev/null || true
+		gsettings set org.gnome.desktop.interface icon-theme "breeze-dark" 2>/dev/null || true
+	fi
+
+	notify "$theme applied ($scheme) - restart open apps to see it"
+	echo "$theme"
+}
+
+apply() {
+	if is_custom "$1"; then
+		"$REPO/bin/.local/bin/theme-apply" "$1"
+	else
+		apply_gtk "$1"
+	fi
+}
+
+case "${1:-}" in
+-l | --list)
+	{
+		custom_themes | sed 's/$/\t(desktop theme)/'
+		gtk_themes | grep -vxF -f <(custom_themes) | sed 's/$/\t(GTK only)/'
+	} 2>/dev/null || true
 	exit 0
-fi
+	;;
+"") ;;
+*)
+	apply "$1"
+	exit 0
+	;;
+esac
 
 pgrep -x rofi >/dev/null && exit 0
 
-current=$(gsettings get org.gnome.desktop.interface gtk-theme 2>/dev/null | tr -d "'" || true)
+current="$("$REPO/bin/.local/bin/theme-apply" --current 2>/dev/null || true)"
 
 choice=$(
-	themes |
-		awk -v cur="$current" '
-			$0 == cur { printf "%s\0icon\x1fpreferences-desktop-theme\x1fmeta\x1f(current)\n", $0; next }
-			{ printf "%s\0icon\x1fpreferences-desktop-theme\n", $0 }
-		' |
-		rofi -dmenu -i -p "GTK theme" -show-icons -l 12 \
-			-theme-str 'window { width: 380px; }'
+	{
+		custom_themes | while read -r t; do
+			meta="desktop theme"
+			[[ $t == "$current" ]] && meta="desktop theme, current"
+			printf '%s\t%s\n' "$t" "$meta"
+		done
+		gtk_themes | grep -vxF -f <(custom_themes) | while read -r t; do
+			printf '%s\t%s\n' "$t" "GTK only"
+		done
+	} |
+		awk -F'\t' '{
+			if ($2 ~ /current/)
+				printf "%s\0icon\x1fpreferences-desktop-theme\x1fmeta\x1f%s\n", $1, $2;
+			else
+				printf "%s\0icon\x1fpreferences-desktop-theme\x1fmeta\x1f%s\n", $1, $2;
+		}' |
+		rofi -dmenu -i -p "Theme" -show-icons -l 12 \
+			-theme-str 'window { width: 420px; }'
 ) || exit 0
 
 [[ -n ${choice:-} ]] || exit 0
-apply_theme "$choice"
+apply "$choice"

@@ -8,7 +8,8 @@ dotfiles/
 ├── waybar/  →  ~/.config/waybar    bar layout + style
 ├── rofi/    →  ~/.config/rofi      launcher/clipboard/pickers config + theme
 ├── gtk/     →  ~/.config/gtk-3.0, gtk-4.0   GTK theme/icons (dark by default)
-├── bin/     →  ~/.local/bin        emoji picker, wallpaper picker, power menu, theme picker
+├── bin/     →  ~/.local/bin        emoji/wallpaper/theme pickers, power menu, helpers
+├── themes/  →  (not stowed)        palettes + templates for `theme-apply`
 └── install.sh
 ```
 
@@ -31,13 +32,15 @@ cd ~/dotfiles
 ```
 
 `install.sh` backs up any real file it would replace to
-`~/.dotfiles-backup/<timestamp>/`, then stows every package.
+`~/.dotfiles-backup/<timestamp>/`, then stows every package and applies the
+default `midnight` theme.
 
 Manual equivalent:
 
 ```bash
 cd ~/dotfiles
-stow -v -t "$HOME" hypr waybar rofi bin
+stow -v -t "$HOME" hypr waybar rofi gtk bin
+theme-apply midnight
 ```
 
 ## Requirements
@@ -59,7 +62,7 @@ stow -v -t "$HOME" hypr waybar rofi bin
 | `SUPER + V` | clipboard history (cliphist + rofi) |
 | `SUPER + .` | emoji picker (copies to clipboard) |
 | `SUPER + Alt + W` | wallpaper picker (hyprpaper) |
-| `SUPER + Alt + T` | GTK/Qt theme picker |
+| `SUPER + Alt + T` | theme picker (desktop themes + GTK) |
 | `SUPER + BackSpace` / `SUPER + M` | power menu |
 | `SUPER + L` | lock screen |
 | `SUPER + S` / `SUPER + Shift + S` | scratchpad (special workspace) |
@@ -82,10 +85,11 @@ Media/brightness keys are bound through `XF86*` keysyms in `hypr/keybinds.lua`.
   `~/Pictures`, `~/Pictures/Wallpapers`, `~/Wallpapers`, `~/.local/share/wallpapers`
   and `~/Downloads`.
 - **`power-menu`** — rofi power menu: lock, suspend, logout, reboot, shutdown.
-- **`theme-picker`** — rofi list of installed GTK themes. Applies the choice to
-  GTK3/GTK4 (`settings.ini`), GNOME/libadwaita (`gsettings`), and sets
-  `color-scheme` so Qt/KDE and Flatpak apps follow through the XDG portal.
-  `theme-picker <name>` applies directly.
+- **`theme-apply`** — renders a complete theme from `themes/<name>/theme.conf`
+  into Hyprland borders, rofi, waybar, GTK, gsettings, KDE and Qt, then reloads
+  Hyprland/waybar. `theme-apply --list` / `--current`.
+- **`theme-picker`** — rofi picker for the complete themes in `themes/` (and
+  plain GTK themes installed system-wide). `theme-picker <name>` applies directly.
 - **`nightlight-toggle`**, **`battery-notify`** — small helpers used by keybind/waybar.
 
 ## Lock / idle
@@ -97,19 +101,46 @@ Media/brightness keys are bound through `XF86*` keysyms in `hypr/keybinds.lua`.
 
 ## Themes
 
-GTK3/GTK4, libadwaita (GNOME) and Qt/KDE apps are dark by default:
+One palette in `themes/<name>/theme.conf` drives the whole desktop. `theme-apply`
+(also `SUPER + Alt + T` → `theme-picker`) renders it into:
 
-- `gtk/settings.ini` files set `Adwaita-dark` + `breeze-dark` icons.
-- `gsettings` sets `color-scheme=prefer-dark`, which the XDG portal exposes to
-  libadwaita, Qt ≥ 6.5 (Dolphin, etc.) and Flatpak apps.
-- `SUPER + Alt + T` (`theme-picker`) lists installed themes from
-  `/usr/share/themes` and `~/.local/share/themes` (plus the built-in Adwaita
-  variants) and applies the selection everywhere, switching
-  `prefer-dark`/`default` based on the theme name.
+| Where | File | What changes |
+|---|---|---|
+| Hyprland | `hypr/colors.lua` | active/inactive border gradient, shadow |
+| Hyprlock | `hypr/hyprlock.conf` | `$hl_*` colour block |
+| rofi | `rofi/themes/colors.rasi` | background, text, accent, selection |
+| waybar | `waybar/colors.css` | every colour used by `style.css` |
+| GTK 3/4 | `gtk-*/settings.ini`, `gtk-*/gtk.css` | theme name, icons, font, full palette |
+| GNOME/portal | `gsettings` | `gtk-theme`, `icon-theme`, `prefer-dark`, cursor |
+| KDE / KF6 | `~/.config/kdeglobals`, `~/.local/share/color-schemes/<Name>.colors` | Dolphin, Ark, Kate, … |
+| Qt (optional) | `~/.config/qt6ct/qt6ct.conf`, `~/.config/Kvantum/kvantum.kvconfig` | when qt6ct / Kvantum are installed |
 
-Install more themes by dropping them into `~/.local/share/themes/<name>`; they
-show up in the picker immediately. `theme-picker Adwaita-dark` also works from a
-terminal or script.
+The default theme is **Midnight** — near-black blue-grey background, `#c0caf5`
+text and a cyan `#33ccff` accent, with `Adwaita-dark` GTK and `breeze-dark` icons.
+
+```bash
+theme-apply --list        # available themes
+theme-apply midnight      # apply one
+theme-apply --current     # what is applied now
+```
+
+### Add a new theme
+
+```bash
+cp -r ~/dotfiles/themes/midnight ~/dotfiles/themes/gruvbox
+$EDITOR ~/dotfiles/themes/gruvbox/theme.conf   # name + colours
+theme-apply gruvbox
+```
+
+It appears in `theme-picker` right away. See [`themes/README.md`](themes/README.md)
+for every key and for per-theme template overrides.
+
+### Kvantum / qt6ct
+
+KDE apps are dark through `kdeglobals` alone. For a fully custom Qt look install
+`kvantum` + `qt6ct` (`sudo pacman -S kvantum qt6ct`), set `kvantum_theme` in the
+theme, and re-apply; `hypr/environment.lua` sets `QT_QPA_PLATFORMTHEME=qt6ct`
+automatically once qt6ct is present.
 
 ## Customize
 
@@ -117,12 +148,14 @@ terminal or script.
 |---|---|
 | Default apps (terminal, file manager, menu) | `hypr/programs.lua` |
 | Gaps, borders, rounding, blur | `hypr/look.lua` |
+| Border / shadow colours | `themes/<name>/theme.conf` (`accent`, `accent2`, `border`) |
 | Animations | `hypr/animations.lua` |
 | Window rules | `hypr/window_rules.lua` |
 | Keybinds | `hypr/keybinds.lua` |
-| Accent colour (rofi, lock screen) | `rofi/theme.rasi` (`@accent`), `hypr/hyprlock.conf` |
-| GTK / Qt theme | `SUPER + Alt + T`, or `theme-picker <name>` |
-| Bar layout / colours | `waybar/config.jsonc`, `waybar/style.css` |
+| Everything colour-related | `themes/<name>/theme.conf` + `theme-apply` |
+| GTK theme / icons / dark mode | `gtk_theme`, `icon_theme`, `dark` in `theme.conf` |
+| Bar layout | `waybar/config.jsonc` |
+| Rofi layout | `rofi/config.rasi`, `rofi/themes/theme.rasi` |
 | Wallpaper search folders | `SEARCH_DIRS` in `bin/wallpaper-picker` |
 
 ### Add another app to the repo
@@ -147,3 +180,9 @@ cd ~/dotfiles && stow -D -v -t "$HOME" <package>
   therefore it is git-ignored.
 - `hyprpaper` starts without a config on a fresh clone; pick a wallpaper once and
   the file is created.
+- `~/.config/kdeglobals` is generated by `theme-apply` and lives outside this
+  repo on purpose: run `theme-apply <theme>` (or `./install.sh`) after cloning.
+- Generated colour files (`hypr/colors.lua`, `rofi/themes/colors.rasi`,
+  `waybar/colors.css`, `gtk-*/gtk.css`, `hypr/hyprlock.conf`'s colour block) are
+  tracked, so `git status` shows the theme you last applied — commit it if you
+  want your clone to reproduce the same look.

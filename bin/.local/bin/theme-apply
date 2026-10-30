@@ -1,0 +1,282 @@
+#!/usr/bin/env bash
+# theme-apply — apply a complete desktop theme in one shot.
+#
+# A theme is a folder in ~/dotfiles/themes/<name>/ holding a `theme.conf`
+# palette. This script renders that palette into every place that needs it:
+#
+#   Hyprland      ~/.config/hypr/colors.lua            (borders + shadow)
+#                 ~/.config/hypr/hyprlock.conf         (colour block)
+#   rofi          ~/.config/rofi/themes/colors.rasi
+#   waybar        ~/.config/waybar/colors.css
+#   GTK 3/4       ~/.config/gtk-{3.0,4.0}/{settings.ini,gtk.css}
+#   GNOME/portal  gsettings (theme, icons, dark mode, font, cursor)
+#   KDE / KF6     ~/.config/kdeglobals
+#                 ~/.local/share/color-schemes/<Name>.colors
+#   Qt            ~/.config/qt6ct/qt6ct.conf              (if qt6ct installed)
+#                 ~/.config/Kvantum/kvantum.kvconfig      (if Kvantum installed)
+#   wallpaper     hyprpaper (only if the theme sets `wallpaper =`)
+#
+# Usage:
+#   theme-apply <theme>      apply a theme
+#   theme-apply --list       list available themes
+#   theme-apply --current    print the last applied theme
+#
+# Adding a theme: copy themes/midnight to themes/<name>, edit theme.conf,
+# then run `theme-apply <name>`. See themes/README.md.
+
+set -euo pipefail
+
+SELF="$(readlink -f -- "${BASH_SOURCE[0]}")"
+# ~/.local/bin/theme-apply -→ ~/dotfiles/bin/.local/bin/theme-apply
+REPO="${DOTFILES_REPO:-$(cd -- "$(dirname -- "$SELF")/../../.." && pwd)}"
+THEMES="$REPO/themes"
+TEMPLATES="$THEMES/templates"
+STATE="$HOME/.config/desktop-theme/current"
+
+die() { printf 'theme-apply: %s\n' "$*" >&2; exit 1; }
+say() { printf '  %s\n' "$*"; }
+have() { command -v "$1" >/dev/null 2>&1; }
+notify() { have notify-send && notify-send "Theme" "$1" || true; }
+
+list_themes() {
+	local d
+	for d in "$THEMES"/*/; do
+		if [[ -f "$d/theme.conf" ]]; then basename -- "$d"; fi
+	done
+	return 0
+}
+
+case "${1:-}" in
+"" | -h | --help)
+	printf 'usage: theme-apply <theme>\n       theme-apply --list\n       theme-apply --current\n\navailable themes:\n'
+	list_themes | sed 's/^/  /'
+	exit 0
+	;;
+-l | --list)
+	list_themes
+	exit 0
+	;;
+-c | --current)
+	[[ -f $STATE ]] && cat "$STATE" || echo "(none)"
+	exit 0
+	;;
+esac
+
+THEME="$1"
+CONF="$THEMES/$THEME/theme.conf"
+[[ -d $THEMES ]] || die "no themes directory at $THEMES"
+[[ -f $CONF ]] || {
+	printf 'theme-apply: unknown theme "%s"\n\navailable themes:\n' "$THEME" >&2
+	list_themes | sed 's/^/  /' >&2
+	exit 1
+}
+
+# ── palette ────────────────────────────────────────────────────────────────
+declare -A C=()
+
+while IFS= read -r line || [[ -n $line ]]; do
+	line="${line%$'\r'}"
+	[[ $line =~ ^[[:space:]]*# ]] && continue
+	[[ $line == *=* ]] || continue
+	key="${line%%=*}"
+	val="${line#*=}"
+	key="${key//[[:space:]]/}"
+	val="${val#"${val%%[![:space:]]*}"}"
+	val="${val%"${val##*[![:space:]]}"}"
+	[[ -n $key ]] || continue
+	C["$key"]="$val"
+done <"$CONF"
+
+# Defaults so a minimal theme.conf still works.
+: "${C[bg]:=#0a0c12}" "${C[bg_alt]:=#12141c}" "${C[surface]:=#1b1f2b}"
+: "${C[overlay]:=#232838}" "${C[border]:=#2b3145}" "${C[fg]:=#f2f2f2}"
+: "${C[fg_dim]:=#a0a0a0}" "${C[muted]:=#505050}" "${C[accent]:=#33ccff}"
+: "${C[accent2]:=${C[accent]}}" "${C[accent_fg]:=#000000}" "${C[red]:=#f7768e}"
+: "${C[orange]:=#e0af68}" "${C[green]:=#9ece6a}" "${C[blue]:=#7aa2f7}"
+: "${C[dark]:=1}" "${C[gtk_theme]:=Adwaita-dark}" "${C[icon_theme]:=breeze-dark}"
+: "${C[cursor_theme]:=default}" "${C[cursor_size]:=24}" "${C[font]:=}"
+: "${C[kvantum_theme]:=Kvantum}" "${C[name]:=$THEME}"
+
+C[theme]="$THEME"
+C[home]="$HOME"
+C[shadow_alpha]=ee
+
+hex2rgb() {
+	local h="${1#\#}"
+	printf '%d,%d,%d' "0x${h:0:2}" "0x${h:2:2}" "0x${h:4:2}"
+}
+# rgba(51, 204, 255, 0.5)  — rofi / gtk / hyprlock style
+rgba() {
+	local rgb
+	rgb="$(hex2rgb "$1")"
+	printf 'rgba(%s, %s)' "$rgb" "$2"
+}
+
+# Derived tokens: for every #rrggbb value add <key>_rgb, <key>_bare and
+# <key>_hypr (Hyprland's rgba(RRGGBBaa) form).
+for key in "${!C[@]}"; do
+	val="${C[$key]}"
+	[[ $val =~ ^#[0-9a-fA-F]{6}$ ]] || continue
+	bin="${val#\#}"
+	C["${key}_rgb"]="$(hex2rgb "$val")"
+	C["${key}_bare"]="$bin"
+	C["${key}_hypr"]="rgba(${bin}ee)"
+done
+
+# A few alpha variants used by the templates.
+C[bg_a90]="$(rgba "${C[bg]}" 0.90)"
+C[surface_a90]="$(rgba "${C[surface]}" 0.90)"
+C[accent_a30]="$(rgba "${C[accent]}" 0.30)"
+C[accent_a45]="$(rgba "${C[accent]}" 0.45)"
+C[accent_a60]="$(rgba "${C[accent]}" 0.60)"
+
+# Qt integration is optional.
+QT6CT=0
+if have qt6ct || [[ -f /usr/lib/qt6/plugins/platformthemes/libqt6ct.so ]]; then QT6CT=1; fi
+KVANTUM=0
+if have kvantummanager || [[ -d /usr/share/Kvantum ]]; then KVANTUM=1; fi
+C[qt_style]="Fusion"
+((KVANTUM)) && C[qt_style]="kvantum"
+
+# ── template rendering ─────────────────────────────────────────────────────
+render() {
+	local name=$1 out=$2 tpl theme_override content key
+	tpl="$TEMPLATES/$name"
+	theme_override="$THEMES/$THEME/$name"
+	[[ -f $theme_override ]] && tpl="$theme_override"
+	[[ -f $tpl ]] || die "missing template $name"
+
+	content="$(<"$tpl")"
+	for key in "${!C[@]}"; do
+		content="${content//\{\{$key\}\}/${C[$key]}}"
+	done
+
+	if [[ $content == *'{{'* ]]; then
+		printf 'theme-apply: warning: unresolved placeholder in %s: %s\n' \
+			"$tpl" "$(grep -o '{{[^}]*}}' <<<"$content" | sort -u | tr '\n' ' ')" >&2
+	fi
+
+	mkdir -p -- "$(dirname -- "$out")"
+	printf '%s\n' "$content" >"$out"
+	say "${out#"$HOME"/}"
+}
+
+printf '\nApplying theme \033[1m%s\033[0m\n\n' "${C[name]}"
+
+# ── Hyprland ───────────────────────────────────────────────────────────────
+render hypr-colors.lua "$HOME/.config/hypr/colors.lua"
+
+# hyprlock.conf keeps its layout; only the marked colour block is replaced.
+HYPRLOCK="$HOME/.config/hypr/hyprlock.conf"
+if [[ -f $HYPRLOCK ]] && grep -q '^# >>> theme colors' "$HYPRLOCK"; then
+	block="$(mktemp)"
+	cat >"$block" <<-EOF
+		\$hl_accent   = $(rgba "${C[accent]}" 1.0)
+		\$hl_accent2  = $(rgba "${C[accent2]}" 1.0)
+		\$hl_bg       = $(rgba "${C[bg]}" 1.0)
+		\$hl_surface  = $(rgba "${C[surface]}" 0.65)
+		\$hl_fg       = $(rgba "${C[fg]}" 1.0)
+		\$hl_fg_dim   = $(rgba "${C[fg_dim]}" 0.85)
+		\$hl_danger   = $(rgba "${C[red]}" 1.0)
+	EOF
+	tmp="$(mktemp)"
+	awk -v bf="$block" '
+		BEGIN { while ((getline l < bf) > 0) blk = blk l "\n" }
+		/^# >>> theme colors/ { print; printf "%s", blk; skip = 1; next }
+		/^# <<< theme colors/ { skip = 0 }
+		!skip { print }
+	' "$HYPRLOCK" >"$tmp" && mv -- "$tmp" "$HYPRLOCK"
+	rm -f -- "$block"
+	say ".config/hypr/hyprlock.conf (colour block)"
+fi
+
+# ── rofi ───────────────────────────────────────────────────────────────────
+render rofi-colors.rasi "$HOME/.config/rofi/themes/colors.rasi"
+
+# ── waybar ─────────────────────────────────────────────────────────────────
+render waybar-colors.css "$HOME/.config/waybar/colors.css"
+
+# ── GTK ────────────────────────────────────────────────────────────────────
+dark=$([[ ${C[dark]} == 1 ]] && echo 1 || echo 0)
+for ver in 3.0 4.0; do
+	dir="$HOME/.config/gtk-$ver"
+	mkdir -p -- "$dir"
+	{
+		echo "[Settings]"
+		echo "gtk-theme-name=${C[gtk_theme]}"
+		echo "gtk-icon-theme-name=${C[icon_theme]}"
+		echo "gtk-application-prefer-dark-theme=$dark"
+		[[ -n ${C[font]} ]] && echo "gtk-font-name=${C[font]}"
+		[[ -n ${C[cursor_theme]} ]] && echo "gtk-cursor-theme-name=${C[cursor_theme]}"
+		[[ -n ${C[cursor_size]} ]] && echo "gtk-cursor-theme-size=${C[cursor_size]}"
+	} >"$dir/settings.ini"
+	say ".config/gtk-$ver/settings.ini"
+	render gtk.css "$dir/gtk.css"
+done
+
+# ── KDE / plasma colour scheme ─────────────────────────────────────────────
+render kdeglobals "$HOME/.config/kdeglobals"
+render kdeglobals "$HOME/.local/share/color-schemes/${C[name]}.colors"
+
+# ── Qt (optional) ──────────────────────────────────────────────────────────
+if ((QT6CT)); then
+	render qt6ct.conf "$HOME/.config/qt6ct/qt6ct.conf"
+else
+	say "qt6ct not installed — Qt palette via KDE/portal only (sudo pacman -S kvantum qt6ct for full Kvantum theming)"
+fi
+if ((KVANTUM)); then
+	render kvantum.kvconfig "$HOME/.config/Kvantum/kvantum.kvconfig"
+fi
+
+# ── GNOME / portals ────────────────────────────────────────────────────────
+if have gsettings; then
+	scheme=default
+	((dark)) && scheme=prefer-dark
+	gsettings set org.gnome.desktop.interface gtk-theme "${C[gtk_theme]}" 2>/dev/null || true
+	gsettings set org.gnome.desktop.interface icon-theme "${C[icon_theme]}" 2>/dev/null || true
+	gsettings set org.gnome.desktop.interface color-scheme "$scheme" 2>/dev/null || true
+	[[ -n ${C[font]} ]] &&
+		gsettings set org.gnome.desktop.interface font-name "${C[font]}" 2>/dev/null || true
+	[[ -n ${C[cursor_theme]} ]] &&
+		gsettings set org.gnome.desktop.interface cursor-theme "${C[cursor_theme]}" 2>/dev/null || true
+	[[ -n ${C[cursor_size]} ]] &&
+		gsettings set org.gnome.desktop.interface cursor-size "${C[cursor_size]}" 2>/dev/null || true
+	say "gsettings: ${C[gtk_theme]}, ${C[icon_theme]}, $scheme"
+fi
+
+# ── wallpaper (optional) ───────────────────────────────────────────────────
+if [[ -n ${C[wallpaper]:-} ]]; then
+	wp="${C[wallpaper]}"
+	[[ -f $wp ]] || die "theme wallpaper not found: $wp"
+	if have hyprctl && [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
+		hyprctl hyprpaper preload "$wp" >/dev/null 2>&1 || true
+		for mon in $(hyprctl monitors -j | jq -r '.[].name' 2>/dev/null); do
+			hyprctl hyprpaper wallpaper "$mon,$wp" >/dev/null 2>&1 || true
+		done
+	fi
+	{
+		echo "preload = $wp"
+		if have hyprctl && [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
+			while read -r mon; do echo "wallpaper = $mon,$wp"; done \
+				< <(hyprctl monitors -j | jq -r '.[].name' 2>/dev/null)
+		else
+			echo "wallpaper = ,$wp"
+		fi
+	} >"$HOME/.config/hypr/hyprpaper.conf"
+	say "wallpaper: $wp"
+fi
+
+# ── reload ─────────────────────────────────────────────────────────────────
+if have hyprctl && [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
+	hyprctl reload >/dev/null 2>&1 || true
+	have hyprctl && hyprctl setcursor "${C[cursor_theme]}" "${C[cursor_size]}" >/dev/null 2>&1 || true
+	pgrep -x waybar >/dev/null && pkill -SIGUSR2 -x waybar || true
+	say "hyprctl reload + waybar reloaded"
+fi
+
+mkdir -p -- "$(dirname -- "$STATE")"
+printf '%s\n' "$THEME" >"$STATE"
+
+echo
+notify "${C[name]} applied"
+say "done — open apps keep their old palette until restarted"
