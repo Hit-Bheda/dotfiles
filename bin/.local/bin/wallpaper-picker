@@ -1,0 +1,189 @@
+#!/usr/bin/env bash
+# Wallpaper picker (rofi + hyprpaper).
+#
+#   wallpaper-picker              pick and apply a wallpaper
+#   wallpaper-picker --warm-cache generate missing previews and exit (no UI)
+#
+# Performance notes: previews are cached in $XDG_CACHE_HOME and only missing
+# ones are (re)generated, in parallel, with libvips when available. This keeps
+# the picker instant even with hundreds of wallpapers.
+
+set -euo pipefail
+
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/rofi-wallpaper-thumbs"
+CONF="$HOME/.config/hypr/hyprpaper.conf"
+LOCK="${XDG_RUNTIME_DIR:-/tmp}/wallpaper-picker.lock"
+WARM=0
+[[ ${1:-} == "--warm-cache" ]] && WARM=1
+
+mkdir -p "$CACHE_DIR"
+
+notify() { command -v notify-send >/dev/null && notify-send "Wallpaper" "$1" || true; }
+
+# Single instance: prevents repeated key presses from stacking up CPU-heavy
+# preview generation. If the lock is taken we skip generation (but still show
+# the picker, using whatever previews are already cached).
+exec 9>"$LOCK"
+CAN_GENERATE=1
+flock -n 9 || CAN_GENERATE=0
+if ((WARM && !CAN_GENERATE)); then
+	exit 0
+fi
+
+# Where to look for wallpapers (only existing dirs).
+SEARCH_DIRS=()
+for d in "$HOME/Pictures" "$HOME/Wallpapers" "$HOME/wallpapers" \
+	"$HOME/.local/share/wallpapers" "$HOME/Downloads"; do
+	[[ -d "$d" ]] && SEARCH_DIRS+=("$d")
+done
+
+if ((${#SEARCH_DIRS[@]} == 0)); then
+	((WARM)) || notify "No wallpaper folder found"
+	exit 1
+fi
+
+mapfile -t candidates < <(
+	find "${SEARCH_DIRS[@]}" -type f \
+		\( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' \
+		-o -iname '*.webp' -o -iname '*.bmp' -o -iname '*.avif' \) \
+		-size +5k 2>/dev/null | sort
+)
+
+if ((${#candidates[@]} == 0)); then
+	((WARM)) || notify "No images found in ${SEARCH_DIRS[*]}"
+	exit 1
+fi
+
+# Keep only images big enough to be wallpapers. Reading every image with
+# `identify` is slow (hundreds of ms each); one batch `vipsheader` call reads
+# only the headers and takes a few ms per file.
+files=()
+if command -v vipsheader >/dev/null 2>&1; then
+	while IFS=$'\t' read -r f dims; do
+		[[ -n ${dims:-} ]] || continue
+		w=${dims%x*}
+		h=${dims#*x}
+		(( (w >= 1280 && h >= 720) || (w >= 720 && h >= 1280) )) || continue
+		files+=("$f")
+	done < <(
+		vipsheader "${candidates[@]}" 2>/dev/null |
+			sed -E 's/^(.*): ([0-9]+x[0-9]+) .*/\1\t\2/'
+	)
+else
+	# No libvips: skip the dimension check, rely on the file-size filter.
+	files=("${candidates[@]}")
+fi
+
+if ((${#files[@]} == 0)); then
+	((WARM)) || notify "No wallpaper-sized images found"
+	exit 1
+fi
+
+thumb_for() {
+	# Sets THUMB to the cache path for a wallpaper. Deriving the name from the
+	# path avoids a subprocess per image (this runs for every wallpaper on
+	# every open); a hash is only used for paths too long to be a filename.
+	local p=$1 enc
+	enc=${p//\//__}
+	if ((${#enc} > 200)); then
+		enc=$(printf '%s' "$p" | md5sum)
+		enc=${enc%% *}
+	fi
+	THUMB="$CACHE_DIR/$enc.png"
+}
+
+# Collect images whose cached preview is missing or older than the image.
+pairs=()
+for f in "${files[@]}"; do
+	thumb_for "$f"
+	[[ -f "$THUMB" && "$THUMB" -nt "$f" ]] && continue
+	pairs+=("$f" "$THUMB")
+done
+
+if ((CAN_GENERATE)) && ((${#pairs[@]} > 0)); then
+	# Generate previews in parallel: src/dst pairs on stdin, 2 args per job.
+	if ((!WARM)) && ((${#pairs[@]} > 20)); then
+		notify "Generating ${#pairs[@]} previews, one moment…"
+	fi
+	printf '%s\0' "${pairs[@]}" |
+		xargs -0 -n 2 -P "$(nproc)" bash -c '
+			src=$1 dst=$2
+			if command -v vipsthumbnail >/dev/null 2>&1; then
+				vipsthumbnail "$src" -s 240 -o "$dst" 2>/dev/null
+			else
+				magick "$src[0]" -auto-orient -thumbnail "240x240>" -quality 85 "$dst" 2>/dev/null
+			fi
+		' _ 2>/dev/null || true
+fi
+
+((WARM)) && exit 0
+
+# Already a picker on screen? Do not stack windows.
+pgrep -x rofi >/dev/null && exit 0
+
+# Feed rofi one line per image:
+#   <path> \0 icon \x1f <thumbnail> \x1f display \x1f <name>
+# (rofi prints the text part before the NUL, i.e. the full path)
+build_entries() {
+	local f name
+	for f in "${files[@]}"; do
+		thumb_for "$f"
+		[[ -f "$THUMB" ]] || continue
+		name=${f##*/}
+		printf '%s\0icon\x1f%s\x1fdisplay\x1f%s\n' "$f" "$THUMB" "$name"
+	done
+}
+
+selection=$(
+	build_entries |
+		rofi -dmenu -i -p "Wallpaper" -show-icons -l 4 \
+			-theme-str '
+				window       { width: 520px; }
+				listview     { columns: 1; lines: 4; spacing: 6px; }
+				element      { padding: 6px; }
+				element-icon { size: 100px; }
+			'
+) || exit 0
+
+[[ -n "${selection:-}" ]] || exit 0
+
+# rofi normally returns the entry text (the path). Fall back to matching the
+# displayed filename in case it returned something else.
+image=""
+if [[ -f "$selection" ]]; then
+	image="$selection"
+else
+	for f in "${files[@]}"; do
+		if [[ "$(basename "$f")" == "$selection" ]]; then
+			image="$f"
+			break
+		fi
+	done
+fi
+
+if [[ -z "$image" ]]; then
+	notify "Could not resolve selection"
+	exit 1
+fi
+
+# Apply to every connected monitor.
+mapfile -t monitors < <(hyprctl monitors -j | jq -r '.[].name')
+if ((${#monitors[@]} == 0)); then
+	notify "No monitors reported by Hyprland"
+	exit 1
+fi
+
+hyprctl hyprpaper preload "$image" >/dev/null 2>&1 || true
+for m in "${monitors[@]}"; do
+	hyprctl hyprpaper wallpaper "$m,$image" >/dev/null 2>&1 || true
+done
+
+# Persist for the next session (hyprpaper reads this file on startup).
+{
+	echo "preload = $image"
+	for m in "${monitors[@]}"; do
+		echo "wallpaper = $m,$image"
+	done
+} >"$CONF"
+
+notify "Wallpaper set: $(basename "$image")"

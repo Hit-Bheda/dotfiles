@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Emoji picker (rofi): pick an emoji, copy it to the clipboard.
+# Needs: rofi, wl-copy, curl (only for the first-run download of the data)
+
+set -euo pipefail
+
+EMOJI_FILE="${XDG_DATA_HOME:-$HOME/.local/share}/emoji/emoji-test.txt"
+URL="https://unicode.org/Public/emoji/latest/emoji-test.txt"
+
+notify() { command -v notify-send >/dev/null && notify-send "Emoji picker" "$1" || true; }
+
+# Fetch the Unicode emoji list once (it is only ~150 KB).
+if [[ ! -s "$EMOJI_FILE" ]]; then
+	mkdir -p "$(dirname "$EMOJI_FILE")"
+	curl -fsSL -o "$EMOJI_FILE" "$URL" || { notify "Could not download emoji data"; exit 1; }
+fi
+
+# Only one picker at a time.
+pgrep -x rofi >/dev/null && exit 0
+
+# Lines look like: 1F600 ; fully-qualified # 😀 E1.0 grinning face
+# -> "😀  grinning face"
+selection=$(
+	awk '
+		/; fully-qualified[ \t]+#/ {
+			line = $0
+			sub(/^.*; fully-qualified[ \t]+# /, "", line)  # strip codepoints + status
+			emoji = line; sub(/ .*/, "", emoji)            # first token  = emoji
+			name  = line; sub(/^[^ ]+ [^ ]+ /, "", name)   # drop "emoji version"
+			printf "%s  %s\n", emoji, name
+		}
+	' "$EMOJI_FILE" |
+		rofi -dmenu -i -p "Emoji" -l 15
+) || exit 0
+
+[[ -n "${selection:-}" ]] || exit 0
+
+emoji="${selection%% *}"
+printf '%s' "$emoji" | wl-copy
+notify "Copied $emoji"

@@ -1,0 +1,5 @@
+# Machine-specific / generated
+hypr/.config/hypr/hyprpaper.conf
+*.bak
+backup/
+*.log

@@ -1,0 +1,14 @@
+#!/bin/bash
+
+STATE_FILE="${XDG_RUNTIME_DIR:-/tmp}/nightlight-state"
+NIGHT_TEMP=3400
+
+if [ -f "$STATE_FILE" ]; then
+  pkill hyprsunset
+  rm -f "$STATE_FILE"
+  notify-send "Night light off"
+else
+  hyprsunset -t "$NIGHT_TEMP" &
+  touch "$STATE_FILE"
+  notify-send "Night light on (${NIGHT_TEMP}K)"
+fi

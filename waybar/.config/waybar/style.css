@@ -1,0 +1,117 @@
+* {
+    font-family: 'JetBrainsMono Nerd Font', 'JetBrains Mono', monospace;
+    font-size: 13px;
+    border: none;
+    border-radius: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+}
+
+/* ── Transparent bar background (the "floating island" canvas) ── */
+window#waybar {
+    background: #000;
+    color: #c0caf5;
+}
+
+/* ── Three pill groups ── */
+.modules-left,
+.modules-center,
+.modules-right {
+    /* background: #141414; */
+    /* border-radius: 4px; */
+    padding: 5px;
+}
+
+/* ── Tooltips ── */
+tooltip {
+    background: #0a0c12;
+    border: 1px solid #33ccff;
+    /* border-radius: 6px; */
+}
+tooltip label {
+    color: #c0caf5;
+}
+
+/* ── Workspaces ── */
+#workspaces {
+    padding: 0;
+    margin: 0;
+}
+
+#workspaces button {
+    color: #4a5068;
+    background: transparent;
+    padding: 2px 5px;
+    /* border-radius: 2; */
+}
+
+#workspaces button.active {
+    color: #0a0c12;
+    background: #ffffff;
+    /* border-radius: 6px; */
+}
+
+/* ── Window title ── */
+#window {
+    color: #c0caf5;
+    padding: 0 6px;
+}
+
+/* ── Launcher (Arch logo) ── */
+#custom-launcher {
+    color: #33ccff;
+    font-size: 15px;
+    padding: 0 8px;
+}
+
+/* ── Power menu button ── */
+#custom-power {
+    color: #f7768e;
+    font-size: 15px;
+    padding: 0 8px;
+}
+
+/* ── Clock ── */
+#clock {
+    color: #c0caf5;
+    padding: 0 6px;
+}
+
+/* ── Battery states ── */
+#battery.warning {
+    color: #e0af68;
+}
+
+#battery.critical {
+    color: #f7768e;
+}
+
+/* ── Pulseaudio muted ── */
+#pulseaudio.muted {
+    color: #4a5068;
+}
+
+/* ── Network disconnected ── */
+#network.disconnected {
+    color: #f7768e;
+}
+
+/* ── Bluetooth states ── */
+#bluetooth.connected {
+    color: #33ccff;
+}
+
+#bluetooth.off,
+#bluetooth.disabled {
+    color: #4a5068;
+}
+
+/* ── Module spacing inside groups ── */
+.modules-right > widget > * {
+    padding: 0 6px;
+}
+
+.modules-left > widget > * {
+    padding: 0 6px;
+}

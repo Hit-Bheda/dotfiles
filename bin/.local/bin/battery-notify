@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+
+BATTERY=$(find /sys/class/power_supply -maxdepth 1 -name 'BAT*' | head -n 1)
+
+if [[ -z "$BATTERY" ]]; then
+    exit 1
+fi
+
+LAST_STATE=""
+
+while true; do
+    CAPACITY=$(cat "$BATTERY/capacity")
+    STATUS=$(cat "$BATTERY/status")
+
+    STATE="normal"
+    MESSAGE=""
+    URGENCY="normal"
+
+    if [[ "$STATUS" == "Full" ]]; then
+        STATE="full"
+        MESSAGE="Battery is fully charged 🔋"
+
+    elif [[ "$STATUS" == "Discharging" ]]; then
+        if (( CAPACITY <= 10 )); then
+            STATE="critical"
+            MESSAGE="Battery critically low: ${CAPACITY}%"
+            URGENCY="critical"
+
+        elif (( CAPACITY <= 20 )); then
+            STATE="low"
+            MESSAGE="Battery is running low: ${CAPACITY}%"
+        fi
+    fi
+
+    if [[ "$STATE" != "$LAST_STATE" && "$STATE" != "normal" ]]; then
+        notify-send \
+            -u "$URGENCY" \
+            -a "Battery Monitor" \
+            "Battery Alert" \
+            "$MESSAGE"
+    fi
+
+    LAST_STATE="$STATE"
+
+    sleep 60
+done

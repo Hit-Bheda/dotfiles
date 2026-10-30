@@ -1,0 +1,102 @@
+{
+    "layer": "top",
+    "height": 35,
+    "spacing": 14,
+    "modules-left": [
+        "custom/launcher",
+        "hyprland/workspaces",
+        "hyprland/window"
+    ],
+    "modules-center": [
+        "clock"
+    ],
+    "modules-right": [
+        "cpu",
+        "backlight",
+        "pulseaudio",
+        "bluetooth",
+        "network",
+        "battery",
+        "custom/power"
+    ],
+    "custom/launcher": {
+        "format": "",
+        "on-click": "rofi -show drun",
+        "tooltip": false
+    },
+    "custom/power": {
+        "format": "",
+        "on-click": "/home/hhb/.local/bin/power-menu",
+        "on-click-right": "hyprlock",
+        "tooltip": false
+    },
+    "hyprland/workspaces": {
+        "format": "{icon}",
+        "persistent-workspaces": {
+            "1": [],
+            "2": [],
+            "3": [],
+            "4": [],
+            "5": []
+        },
+        // "format-icons": {
+        //     "active": "⚡",
+        //     "default": "•"
+        // }
+    },
+    "hyprland/window": {
+        "format": "{class}",
+        "max-length": 30
+    },
+    "clock": {
+        "format": "  {:%I:%M %p %a}",
+        "tooltip-format": "<big>{:%Y %B}</big>\n<tt><small>{calendar}</small></tt>"
+    },
+    "cpu": {
+        "format": " {usage}%",
+        "tooltip": false
+    },
+    "backlight": {
+        "format": "󰃒 {percent}%",
+        "scroll-step": 5,
+        "on-scroll-up": "brightnessctl set +5%",
+        "on-scroll-down": "brightnessctl set 5%-",
+        "tooltip": false
+    },
+    "pulseaudio": {
+        "format": "{icon} {volume}%",
+        "format-muted": "󰝟 {volume}%",
+        "format-icons": {
+            "headphone": "",
+            "headset": "󰌮",
+            "default": ["󰕿", "󰖀", "󰕾"]
+        },
+        "on-click": "pavucontrol",
+        "tooltip": false
+    },
+    "bluetooth": {
+        "format": "",
+        "format-off": "󰕺",
+        "format-disabled": "󰕺",
+        "format-connected": " {device_alias}",
+        "on-click": "blueman-manager",
+        "tooltip": false
+    },
+    "network": {
+        "format-wifi": "󰤨",
+        "format-ethernet": "󰈀",
+        "format-disconnected": "󰤭",
+        "tooltip-format-wifi": "{essid}  {signalStrength}%",
+        "tooltip-format-ethernet": "{ipaddr}/{cidr}",
+        "tooltip-format-disconnected": "Disconnected"
+    },
+    "battery": {
+        "format": "{icon} {capacity}%",
+        "format-icons": ["󰁺","󰁻","󰁼","󰁽","󰁾","󰁿","󰂀","󰂁","󰂂","󰁹"],
+        "states": {
+            "warning": 30,
+            "critical": 15
+        },
+        "tooltip": false
+    }
+}

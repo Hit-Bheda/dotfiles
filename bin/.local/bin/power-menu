@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Power menu (rofi): lock, suspend, logout, reboot, shutdown.
+
+set -euo pipefail
+
+pgrep -x rofi >/dev/null && exit 0
+
+entries=(
+	"Lock\0icon\x1fsystem-lock-screen"
+	"Suspend\0icon\x1fsystem-suspend"
+	"Logout\0icon\x1fsystem-log-out"
+	"Reboot\0icon\x1fsystem-reboot"
+	"Shutdown\0icon\x1fsystem-shutdown"
+)
+
+choice=$(
+	printf '%b\n' "${entries[@]}" |
+		rofi -dmenu -i -p "Power" -show-icons -l 5 \
+			-theme-str 'window { width: 280px; }'
+) || exit 0
+
+case "$choice" in
+Lock) exec hyprlock ;;
+Suspend) systemctl suspend ;;
+Logout) hyprctl dispatch exit ;;
+Reboot) systemctl reboot ;;
+Shutdown) systemctl poweroff ;;
+*) exit 0 ;;
+esac
