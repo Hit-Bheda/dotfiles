@@ -11,7 +11,7 @@ set -euo pipefail
 
 REPO="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 TARGET="${TARGET:-$HOME}"
-PACKAGES=(hypr waybar rofi bin)
+PACKAGES=(hypr waybar rofi gtk bin)
 BACKUP="$HOME/.dotfiles-backup/$(date +%Y%m%d-%H%M%S)"
 
 command -v stow >/dev/null 2>&1 || {
@@ -49,6 +49,13 @@ done
 
 # Folder the wallpaper picker scans.
 mkdir -p "$TARGET/Pictures/Wallpapers"
+
+# Dark theme for GTK3/GTK4/libadwaita, and for Qt/Flatpak via the XDG portal.
+if command -v gsettings >/dev/null 2>&1; then
+	gsettings set org.gnome.desktop.interface gtk-theme 'Adwaita-dark' 2>/dev/null || true
+	gsettings set org.gnome.desktop.interface icon-theme 'breeze-dark' 2>/dev/null || true
+	gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark' 2>/dev/null || true
+fi
 
 echo
 echo "Done. Packages stowed into $TARGET: ${PACKAGES[*]}"

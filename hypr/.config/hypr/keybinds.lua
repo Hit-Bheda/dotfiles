@@ -30,6 +30,9 @@ hl.bind(mainMod .. " + period", hl.dsp.exec_cmd(os.getenv("HOME") .. "/.local/bi
 -- Wallpaper picker (rofi + hyprpaper)
 hl.bind(mainMod .. " + ALT + W", hl.dsp.exec_cmd(os.getenv("HOME") .. "/.local/bin/wallpaper-picker"))
 
+-- GTK/Qt theme picker
+hl.bind(mainMod .. " + ALT + T", hl.dsp.exec_cmd(os.getenv("HOME") .. "/.local/bin/theme-picker"))
+
 -- Move focus with mainMod + arrow keys
 hl.bind(mainMod .. " + left", hl.dsp.focus({ direction = "left" }))
 hl.bind(mainMod .. " + right", hl.dsp.focus({ direction = "right" }))

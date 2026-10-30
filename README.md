@@ -7,7 +7,8 @@ dotfiles/
 ├── hypr/    →  ~/.config/hypr      Hyprland (Lua config), hyprpaper, hypridle, hyprlock
 ├── waybar/  →  ~/.config/waybar    bar layout + style
 ├── rofi/    →  ~/.config/rofi      launcher/clipboard/pickers config + theme
-├── bin/     →  ~/.local/bin        emoji picker, wallpaper picker, power menu, helpers
+├── gtk/     →  ~/.config/gtk-3.0, gtk-4.0   GTK theme/icons (dark by default)
+├── bin/     →  ~/.local/bin        emoji picker, wallpaper picker, power menu, theme picker
 └── install.sh
 ```
 
@@ -58,6 +59,7 @@ stow -v -t "$HOME" hypr waybar rofi bin
 | `SUPER + V` | clipboard history (cliphist + rofi) |
 | `SUPER + .` | emoji picker (copies to clipboard) |
 | `SUPER + Alt + W` | wallpaper picker (hyprpaper) |
+| `SUPER + Alt + T` | GTK/Qt theme picker |
 | `SUPER + BackSpace` / `SUPER + M` | power menu |
 | `SUPER + L` | lock screen |
 | `SUPER + S` / `SUPER + Shift + S` | scratchpad (special workspace) |
@@ -80,6 +82,10 @@ Media/brightness keys are bound through `XF86*` keysyms in `hypr/keybinds.lua`.
   `~/Pictures`, `~/Pictures/Wallpapers`, `~/Wallpapers`, `~/.local/share/wallpapers`
   and `~/Downloads`.
 - **`power-menu`** — rofi power menu: lock, suspend, logout, reboot, shutdown.
+- **`theme-picker`** — rofi list of installed GTK themes. Applies the choice to
+  GTK3/GTK4 (`settings.ini`), GNOME/libadwaita (`gsettings`), and sets
+  `color-scheme` so Qt/KDE and Flatpak apps follow through the XDG portal.
+  `theme-picker <name>` applies directly.
 - **`nightlight-toggle`**, **`battery-notify`** — small helpers used by keybind/waybar.
 
 ## Lock / idle
@@ -88,6 +94,22 @@ Media/brightness keys are bound through `XF86*` keysyms in `hypr/keybinds.lua`.
   password field.
 - `hypr/hypridle.conf` — display off after 2.5 min, lock after 5 min, lock before
   suspend.
+
+## Themes
+
+GTK3/GTK4, libadwaita (GNOME) and Qt/KDE apps are dark by default:
+
+- `gtk/settings.ini` files set `Adwaita-dark` + `breeze-dark` icons.
+- `gsettings` sets `color-scheme=prefer-dark`, which the XDG portal exposes to
+  libadwaita, Qt ≥ 6.5 (Dolphin, etc.) and Flatpak apps.
+- `SUPER + Alt + T` (`theme-picker`) lists installed themes from
+  `/usr/share/themes` and `~/.local/share/themes` (plus the built-in Adwaita
+  variants) and applies the selection everywhere, switching
+  `prefer-dark`/`default` based on the theme name.
+
+Install more themes by dropping them into `~/.local/share/themes/<name>`; they
+show up in the picker immediately. `theme-picker Adwaita-dark` also works from a
+terminal or script.
 
 ## Customize
 
@@ -99,6 +121,7 @@ Media/brightness keys are bound through `XF86*` keysyms in `hypr/keybinds.lua`.
 | Window rules | `hypr/window_rules.lua` |
 | Keybinds | `hypr/keybinds.lua` |
 | Accent colour (rofi, lock screen) | `rofi/theme.rasi` (`@accent`), `hypr/hyprlock.conf` |
+| GTK / Qt theme | `SUPER + Alt + T`, or `theme-picker <name>` |
 | Bar layout / colours | `waybar/config.jsonc`, `waybar/style.css` |
 | Wallpaper search folders | `SEARCH_DIRS` in `bin/wallpaper-picker` |
 
