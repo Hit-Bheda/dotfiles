@@ -9,7 +9,6 @@ configuration {
     modes:                "drun,run,window,ssh";
     drun-display-format:  "{name}";
     show-icons:           true;              /* wofi allow_images=true */
-    icon-theme:           "breeze-dark";
     application-fallback-icon: "application-x-executable";
 
     font:                 "JetBrainsMono Nerd Font Mono 12";

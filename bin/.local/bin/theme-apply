@@ -7,7 +7,12 @@
 #   Hyprland      ~/.config/hypr/colors.lua            (borders + shadow)
 #                 ~/.config/hypr/hyprlock.conf         (colour block)
 #   rofi          ~/.config/rofi/themes/colors.rasi
+#                 ~/.config/rofi/themes/icons.rasi
 #   waybar        ~/.config/waybar/colors.css
+#   swaync        ~/.config/swaync/colors.css
+#   kitty         ~/.config/kitty/colors.conf
+#   tmux          ~/.config/tmux/colors.conf
+#   Neovim        ~/.config/nvim/lua/desktop-theme.lua
 #   GTK 3/4       ~/.config/gtk-{3.0,4.0}/{settings.ini,gtk.css}
 #   GNOME/portal  gsettings (theme, icons, dark mode, font, cursor)
 #   KDE / KF6     ~/.config/kdeglobals
@@ -192,9 +197,24 @@ fi
 
 # ── rofi ───────────────────────────────────────────────────────────────────
 render rofi-colors.rasi "$HOME/.config/rofi/themes/colors.rasi"
+render rofi-icons.rasi "$HOME/.config/rofi/themes/icons.rasi"
 
 # ── waybar ─────────────────────────────────────────────────────────────────
 render waybar-colors.css "$HOME/.config/waybar/colors.css"
+
+# ── SwayNC ─────────────────────────────────────────────────────────────────
+if have swaync || [[ -d $HOME/.config/swaync ]]; then
+	render swaync-colors.css "$HOME/.config/swaync/colors.css"
+fi
+
+# ── kitty ──────────────────────────────────────────────────────────────────
+[[ -d $HOME/.config/kitty ]] && render kitty-colors.conf "$HOME/.config/kitty/colors.conf"
+
+# ── tmux ───────────────────────────────────────────────────────────────────
+[[ -d $HOME/.config/tmux ]] && render tmux-colors.conf "$HOME/.config/tmux/colors.conf"
+
+# ── Neovim ─────────────────────────────────────────────────────────────────
+[[ -d $HOME/.config/nvim ]] && render nvim-colors.lua "$HOME/.config/nvim/lua/desktop-theme.lua"
 
 # ── GTK ────────────────────────────────────────────────────────────────────
 dark=$([[ ${C[dark]} == 1 ]] && echo 1 || echo 0)
@@ -249,19 +269,18 @@ if [[ -n ${C[wallpaper]:-} ]]; then
 	wp="${C[wallpaper]}"
 	[[ -f $wp ]] || die "theme wallpaper not found: $wp"
 	if have hyprctl && [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
-		hyprctl hyprpaper preload "$wp" >/dev/null 2>&1 || true
 		for mon in $(hyprctl monitors -j | jq -r '.[].name' 2>/dev/null); do
 			hyprctl hyprpaper wallpaper "$mon,$wp" >/dev/null 2>&1 || true
 		done
 	fi
+	# hyprpaper >= 0.8 uses hyprlang special categories; a wildcard monitor
+	# applies to every output, including monitors connected after login.
 	{
-		echo "preload = $wp"
-		if have hyprctl && [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
-			while read -r mon; do echo "wallpaper = $mon,$wp"; done \
-				< <(hyprctl monitors -j | jq -r '.[].name' 2>/dev/null)
-		else
-			echo "wallpaper = ,$wp"
-		fi
+		echo "wallpaper {"
+		echo "    monitor = *"
+		echo "    path = $wp"
+		echo "    fit_mode = cover"
+		echo "}"
 	} >"$HOME/.config/hypr/hyprpaper.conf"
 	say "wallpaper: $wp"
 fi
@@ -271,7 +290,10 @@ if have hyprctl && [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
 	hyprctl reload >/dev/null 2>&1 || true
 	have hyprctl && hyprctl setcursor "${C[cursor_theme]}" "${C[cursor_size]}" >/dev/null 2>&1 || true
 	pgrep -x waybar >/dev/null && pkill -SIGUSR2 -x waybar || true
-	say "hyprctl reload + waybar reloaded"
+	pgrep -x swaync >/dev/null && swaync-client --reload-css >/dev/null 2>&1 || true
+	pgrep -x kitty >/dev/null && pkill -SIGUSR1 -x kitty || true
+	tmux info >/dev/null 2>&1 && tmux source-file "$HOME/.config/tmux/tmux.conf" >/dev/null 2>&1 || true
+	say "hyprctl reload + waybar/swaync/kitty/tmux refreshed"
 fi
 
 mkdir -p -- "$(dirname -- "$STATE")"

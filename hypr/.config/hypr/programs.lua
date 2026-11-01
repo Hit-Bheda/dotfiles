@@ -1,10 +1,10 @@
 -- Programs you use
-local terminal    = "kitty"
-local fileManager = "dolphin"
-local menu        = "rofi -show drun"
+local terminal = "kitty"
+local fileManager = "nautilus"
+local menu = "rofi -show drun"
 
 return {
-    terminal    = terminal,
-    fileManager = fileManager,
-    menu        = menu,
+	terminal = terminal,
+	fileManager = fileManager,
+	menu = menu,
 }

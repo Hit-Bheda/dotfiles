@@ -11,7 +11,7 @@ set -euo pipefail
 
 REPO="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 TARGET="${TARGET:-$HOME}"
-PACKAGES=(hypr waybar rofi gtk bin)
+PACKAGES=(hypr waybar rofi swaync kitty tmux nvim gtk bin)
 BACKUP="$HOME/.dotfiles-backup/$(date +%Y%m%d-%H%M%S)"
 
 command -v stow >/dev/null 2>&1 || {
@@ -50,10 +50,29 @@ done
 # Folder the wallpaper picker scans.
 mkdir -p "$TARGET/Pictures/Wallpapers"
 
+# Tela icon theme — one colour variant per palette (see themes/*/theme.conf).
+# Themes are user-local, so no root is needed.
+TELA_VARIANTS=(purple dracula grey standard)
+missing_tela=0
+for color in "${TELA_VARIANTS[@]}"; do
+	for bright in '' '-light' '-dark'; do
+		[[ -d "$HOME/.local/share/icons/Tela-${color}${bright}" ]] ||
+			[[ -d "$HOME/.local/share/icons/Tela${bright}" && "$color" == standard ]] ||
+			missing_tela=1
+	done
+done
+if ((missing_tela)) && command -v git >/dev/null 2>&1; then
+	tela_dir="$(mktemp -d)"
+	if git clone --depth 1 https://github.com/vinceliuice/Tela-icon-theme.git "$tela_dir" 2>/dev/null; then
+		"$tela_dir/install.sh" "${TELA_VARIANTS[@]}" || true
+	fi
+	rm -rf "$tela_dir"
+fi
+
 # Dark theme for GTK3/GTK4/libadwaita, and for Qt/Flatpak via the XDG portal.
 if command -v gsettings >/dev/null 2>&1; then
 	gsettings set org.gnome.desktop.interface gtk-theme 'Adwaita-dark' 2>/dev/null || true
-	gsettings set org.gnome.desktop.interface icon-theme 'breeze-dark' 2>/dev/null || true
+	gsettings set org.gnome.desktop.interface icon-theme 'Tela-dark' 2>/dev/null || true
 	gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark' 2>/dev/null || true
 fi
 

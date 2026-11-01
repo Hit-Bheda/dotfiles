@@ -173,17 +173,30 @@ if ((${#monitors[@]} == 0)); then
 	exit 1
 fi
 
-hyprctl hyprpaper preload "$image" >/dev/null 2>&1 || true
+# hyprpaper >= 0.8 only accepts
+#   hyprctl hyprpaper wallpaper <monitor>,<path>[,<fit_mode>]
+# (the old `preload` request was removed).
+applied=0
 for m in "${monitors[@]}"; do
-	hyprctl hyprpaper wallpaper "$m,$image" >/dev/null 2>&1 || true
+	hyprctl hyprpaper wallpaper "$m,$image" >/dev/null 2>&1 && applied=$((applied + 1))
 done
 
 # Persist for the next session (hyprpaper reads this file on startup).
+# hyprpaper >= 0.8 uses hyprlang special categories for wallpapers; the old
+# `preload =` / `wallpaper = monitor,path` syntax is silently ignored by it.
+# A wildcard monitor applies the image to every output, including monitors
+# connected after login.
 {
-	echo "preload = $image"
-	for m in "${monitors[@]}"; do
-		echo "wallpaper = $m,$image"
-	done
+	echo "wallpaper {"
+	echo "    monitor = *"
+	echo "    path = $image"
+	echo "    fit_mode = cover"
+	echo "}"
 } >"$CONF"
+
+if ((applied == 0)); then
+	notify "Could not apply wallpaper (is hyprpaper running?)"
+	exit 1
+fi
 
 notify "Wallpaper set: $(basename "$image")"

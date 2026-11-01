@@ -88,15 +88,28 @@
         "format-disconnected": "󰤭",
         "tooltip-format-wifi": "{essid}  {signalStrength}%",
         "tooltip-format-ethernet": "{ipaddr}/{cidr}",
-        "tooltip-format-disconnected": "Disconnected"
+        "tooltip-format-disconnected": "Disconnected",
+        "on-click": "kitty -e nmtui",
     },
     "battery": {
         "format": "{icon} {capacity}%",
-        "format-icons": ["󰁺","󰁻","󰁼","󰁽","󰁾","󰁿","󰂀","󰂁","󰂂","󰁹"],
+        "format-charging": "󰂄 {capacity}%",
+        "format-plugged": "󰚥 {capacity}%",
+        "format-discharging": "{icon} {capacity}%",
+        "format-full": "󰁹 {capacity}%",
+
+        "format-icons": [
+            "󰁺", "󰁻", "󰁼", "󰁽", "󰁾",
+            "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"
+        ],
+
         "states": {
             "warning": 30,
             "critical": 15
         },
-        "tooltip": false
+
+        "tooltip-format": "{timeTo} remaining",
+        "tooltip": true,
+        "on-click": ""
     }
 }

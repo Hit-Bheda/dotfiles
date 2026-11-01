@@ -75,3 +75,11 @@
 @define-color green_1 {{green}};
 @define-color yellow_1 {{orange}};
 @define-color red_1   {{red}};
+
+/* ── Sharp edges ────────────────────────────────────────────────────── */
+/* The theme is square-cornered: override every radius the GTK theme
+ * applies to buttons, entries, menus, popovers, switches and windows.
+ * Loaded at user priority, so this wins over the theme's own rules. */
+* {
+    border-radius: 0;
+}
