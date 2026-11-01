@@ -146,7 +146,7 @@ theme-apply gruvbox
 It appears in `theme-picker` right away. See [`themes/README.md`](themes/README.md)
 for every key and for per-theme template overrides.
 
-### Kvantum / qt6ct
+### Kvantum / qt6ct(not working)
 
 KDE apps are dark through `kdeglobals` alone. For a fully custom Qt look install
 `kvantum` + `qt6ct` (`sudo pacman -S kvantum qt6ct`), set `kvantum_theme` in the
